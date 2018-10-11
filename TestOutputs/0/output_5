@@ -1,0 +1,3 @@
+Not enough parameters specified.  Usage: a.out <allocation_type> <input_file>
+  Allocation type: 0 - Buddy System
+  Allocation type: 1 - Slab Allocation
