@@ -1,7 +1,7 @@
 // Include files
 #include <stdio.h>
 #include <stdlib.h>
-
+#define N_OBJ_PER_SLAB 64
 
 // Functional prototypes
 void setup( int malloc_type, int mem_size, void* start_of_memory );
