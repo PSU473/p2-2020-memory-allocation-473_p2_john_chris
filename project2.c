@@ -58,7 +58,7 @@ int  read_next_ops(ops_t * op){
 	char *token;
 	char* rest=line;
 	if(token=strtok_r(rest, " ", &rest)) {
-		strcpy(&op->handle, token);
+    op->handle = *token;
 	} else {
 		return 0;
 	}
@@ -68,7 +68,7 @@ int  read_next_ops(ops_t * op){
 		return 0;
 	}
 	if(token=strtok_r(rest, " ", &rest)) {
-		strcpy(&op->type, token);
+    op->type = *token;
 	} else {
 		return 0;
 	}
@@ -104,12 +104,12 @@ int main(int argc, char *argv[]){
 	handle_t * handles = NULL;
 	ops_t * op = (ops_t*) malloc(sizeof(ops_t));
 	while(read_next_ops(op)){
-		if(strcmp(&op->type,"M")==0){//do my_alloc
+		if(op->type == 'M'){//do my_alloc
 			if (handles == NULL){
 				handles = (handle_t *) malloc(sizeof(handle_t));
 				handles->_handle = op->handle;
 				handles->num_allocs = 0;
-				handles->addresses = (int**)malloc(sizeof(int*)*op->numops);
+				handles->addresses = (int**)malloc(sizeof(int*)*(op->numops+1));
 				//printf("handles %c",handles->_handle);
 				handles->next = NULL;
 				for (int i=1; i<= op->numops; i++){
@@ -133,13 +133,15 @@ int main(int argc, char *argv[]){
 			}
 			else{
 				handle_t * hp = handles;
+				// printf("handles %c",hp->_handle);
 				while (hp->next != NULL){
+					//printf("handles %c",hp->_handle);
 					hp = hp->next;
 				}
 				hp->next = (handle_t *) malloc(sizeof(handle_t));
 				hp->next->_handle = op->handle;
 				hp->next->num_allocs = 0;
-				hp->next->addresses =  (int**)malloc(sizeof(int*)*op->numops);
+				hp->next->addresses =  (int**)malloc(sizeof(int*)*(op->numops+1));
 				hp->next->next= NULL;
 				for (int i=1; i<= op->numops; i++){
 
@@ -163,7 +165,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 
-		else if(strcmp(&op->type,"F")==0){//do free
+		else if(op->type == 'F'){//do free
 			handle_t * hp1 = NULL;
 			hp1= handles;
 			while(hp1 !=NULL){
