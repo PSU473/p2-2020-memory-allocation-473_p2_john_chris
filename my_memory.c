@@ -1,3 +1,4 @@
+// Authors: John Rost and Chris Muller
 // Include files
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,9 +41,14 @@ free_list* buddyList;
 // Functional prototypes
 void setup(int malloc_type, int mem_size, void* start_of_memory);
 void* my_malloc(int size);
+Slabs* createSlabs(int ns);
 void my_free(void* ptr);
+void freeSlab(Slabs* t_h, Slab* ts);
 void* malloc_buddy(int size);
+void allocRemainder(int c1, int c2, void* sa);
 void free_buddy(void* ptr);
+Buddy* findBuddy(Buddy* a, void* ad);
+void removeBuddy(Buddy* a, Buddy* b, int pwr);
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -92,32 +98,26 @@ void* my_malloc(int size) {
     slabs = slabs->next;
   }
   if((slabs == NULL) || (slabs->used == N_OBJS_PER_SLAB * slabs->slab_amt)) {
-    Slabs* newSlabs;
-    newSlabs = (Slabs*)malloc(sizeof(Slabs));
-    newSlabs->per_slab_size = newSize;
-    newSlabs->total_size = newSize * N_OBJS_PER_SLAB;
-    newSlabs->slab_amt = 0;
-    newSlabs->first = NULL;
-    newSlabs->used = 0;
-    newSlabs->next = head;
-    head = newSlabs;
+    head = createSlabs(newSize);
     slabs = head;
     void* slab_start;
-    slab_start = malloc_buddy(slabs->total_size);
+    slab_start = malloc_buddy(head->total_size);
     Slab* newSlab;
     newSlab = (Slab*)malloc(sizeof(newSlab));
     newSlab->bits = (int*)malloc(sizeof(int) * N_OBJS_PER_SLAB);
-    for(int i = 0; i < N_OBJS_PER_SLAB; i++) {
-      newSlab->bits[i] = 0;
+    int count2 = 0;
+    while(count2 < N_OBJS_PER_SLAB) {
+      newSlab->bits[count2] = 0;
+      count2++;
     }
     if(slab_start == NULL) {
       return NULL;
     }
     newSlab->used = 0;
     newSlab->slab_start = slab_start;
-    newSlab->next = slabs->first;
-    slabs->first = newSlab;
-    slabs->slab_amt++;
+    newSlab->next = head->first;
+    head->first = newSlab;
+    head->slab_amt++;
   }
   Slab* slab2;
   slab2 = slabs->first;
@@ -135,6 +135,18 @@ void* my_malloc(int size) {
   slab2->used++;
   slab2->bits[count] = 1;
   return returnAddress;
+}
+
+Slabs* createSlabs(int ns) {
+  Slabs* newSlabs;
+  newSlabs = (Slabs*)malloc(sizeof(Slabs));
+  newSlabs->per_slab_size = ns;
+  newSlabs->total_size = ns * N_OBJS_PER_SLAB;
+  newSlabs->slab_amt = 0;
+  newSlabs->first = NULL;
+  newSlabs->used = 0;
+  newSlabs->next = head;
+  return newSlabs;
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -158,9 +170,6 @@ void my_free(void* ptr) {
   while((temp_head->per_slab_size != size) && (temp_head != NULL)) { 
     temp_head = temp_head->next;
   }
-  if(temp_head == NULL) {
-    return;
-  }
   tempSlab = temp_head->first;
   while(tempSlab != NULL && (tempSlab->slab_start > ptr && ptr > lastAddress)) { 
     lastAddress = tempSlab->slab_start + N_OBJS_PER_SLAB * size; 
@@ -169,32 +178,38 @@ void my_free(void* ptr) {
   if(tempSlab == NULL) {
     return;
   }
-  for(int i = 0; i < N_OBJS_PER_SLAB; i++) {
-    lastAddress = tempSlab->slab_start + (i * size);
-    if(lastAddress == ptr && tempSlab->bits[i] == 0) { 
+  int count = 0;
+  while(count < N_OBJS_PER_SLAB) {
+    lastAddress = tempSlab->slab_start + (count * size);
+    if(lastAddress == ptr && tempSlab->bits[count] == 0) { 
       return;
     }
     if(lastAddress == ptr) {
       tempSlab->used--;
       temp_head->used--;
-      tempSlab->bits[i] = 0;
+      tempSlab->bits[count] = 0;
       break;
     }
+    count++;
   }
   if(tempSlab->used == 0) {
-    Slab* first = temp_head->first;
-    if(first == tempSlab) {
-      temp_head->first = first->next;
-    } 
-    if(first != tempSlab) {
-      while(first->next != tempSlab) {
-        first = first->next;
-      }
-      first->next = tempSlab->next;
-    }
-    temp_head->slab_amt--;
-    free_buddy(tempSlab->slab_start);
+    freeSlab(temp_head, tempSlab);
   }
+}
+
+void freeSlab(Slabs* t_h, Slab* ts) {
+  Slab* first = t_h->first;
+  if(first == ts) {
+    t_h->first = first->next;
+  }
+  if(first != ts) {
+    while(first->next != ts) {
+      first = first->next;
+    }
+    first->next = ts->next;
+  }
+  t_h->slab_amt--;
+  free_buddy(ts->slab_start);
 }
 
 void* malloc_buddy(int size) {
@@ -247,22 +262,26 @@ void* malloc_buddy(int size) {
         buddyList[power].head = busyBuddy;
         smallestAddress = smallestAddress + buddyList[power].size;
         int count2 = power;
-        while(count2 < count) {
-          Buddy* freeBuddy = (Buddy*)malloc(sizeof(Buddy));
-          freeBuddy->free_or_allocated = 0;
-          freeBuddy->next = buddyList[count2].head;
-          freeBuddy->address = smallestAddress;
-          buddyList[count2].amt_avail++;
-          buddyList[count2].head = freeBuddy;
-          smallestAddress = smallestAddress + buddyList[count2].size;
-          count2++;
-        }
+        allocRemainder(count2, count, smallestAddress);
         break;
       }
     }
     count++;
   }
   return returnSmallestAddress;
+}
+
+void allocRemainder(int c1, int c2, void* sa) {
+  while(c1 < c2) {
+    Buddy* freeBuddy = (Buddy*)malloc(sizeof(Buddy));
+    freeBuddy->free_or_allocated = 0;
+    freeBuddy->next = buddyList[c1].head;
+    freeBuddy->address = sa;
+    buddyList[c1].amt_avail++;
+    buddyList[c1].head = freeBuddy;
+    sa = sa + buddyList[c1].size;
+    c1++;
+  } 
 }
 
 void free_buddy(void* ptr) {
@@ -288,15 +307,7 @@ void free_buddy(void* ptr) {
     powerCount++;
   }
   Buddy* erase = buddyList[power].head;
-  if(buddyList[power].head == to_be_freed) {
-    buddyList[power].head = buddyList[power].head->next;
-  }
-  else if(buddyList[power].head != to_be_freed) {
-    while(erase->next != to_be_freed && erase->next != NULL) {
-      erase = erase->next;
-    }
-    erase->next = erase->next->next;
-  }
+  removeBuddy(to_be_freed, erase, power);
   Buddy* newTemp;
   int brake = 0;
   while(power <= 20 && brake == 0) {
@@ -310,15 +321,7 @@ void free_buddy(void* ptr) {
       address = ptr - size;
     }
     newTemp = buddyList[power].head;
-    int brk = 0;
-    while(newTemp != NULL && brk == 0) {
-      if(newTemp->address == address) {
-        brk = 1;
-      }
-      if(brk == 0) {
-        newTemp = newTemp->next;
-      }
-    }
+    newTemp = findBuddy(newTemp, address);
     if(newTemp == NULL || newTemp->free_or_allocated == 1) { 
       to_be_freed->address = ptr;
       to_be_freed->next = buddyList[power].head;
@@ -344,5 +347,30 @@ void free_buddy(void* ptr) {
       }
     }
   power++;
+  }
+}
+
+Buddy* findBuddy(Buddy* a, void* ad) {
+  int brk = 0;
+  while(a != NULL && brk == 0) {
+    if(a->address == ad) {
+      brk = 1;
+    }
+    if(brk == 0) {
+      a = a->next;
+    }
+  }
+  return a;
+}
+
+void removeBuddy(Buddy* a, Buddy* b, int pwr) {
+  if(buddyList[pwr].head == a) {
+    buddyList[pwr].head = buddyList[pwr].head->next;
+  }
+  else if(buddyList[pwr].head != a) {
+    while(b->next != a && b->next != NULL) {
+      b = b->next;
+    }
+    b->next = b->next->next;
   }
 }
