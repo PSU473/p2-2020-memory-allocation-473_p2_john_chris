@@ -1,5 +1,5 @@
-Project Members: John Rost and Chris Muller
-Report Author: John Rost
+Project Members: John Rost and Chris Muller ||
+Report Author: John Rost || 
   For our second project of the semester, we were tasked with implementing the slab and buddy system malloc functionality in C. In order to accomplish this task, 
   a great deal of research was performed by both myself and Chris Muller. I focused mainly on the slab functionality, while Chris researched the buddy system and 
   possible ways to implement it, and we frequently got in touch with eachother to discuss how we might tackle both problems. I handled most of the coding while
